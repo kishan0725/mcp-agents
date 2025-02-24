@@ -1,0 +1,4 @@
+.hai/
+node_modules/
+dist/
+.env
