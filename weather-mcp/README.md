@@ -2,12 +2,16 @@
 
 This guide shows how to containerize and deploy the Weather MCP server using Docker.
 
-## Files Created
+## Files
 
 - `Dockerfile` - Container definition
 - `docker-compose.yml` - Easy deployment with Docker Compose
 - `.dockerignore` - Optimizes build by excluding unnecessary files
-- `README_Docker.md` - This documentation
+- `mcp_client.py` - Python client for testing
+- `requirements.txt` - Python dependencies
+- `weather.py` - Main server file
+- `README.md` - This documentation
+- `pyproject.toml` - Python project configuration
 
 ## Quick Start
 
