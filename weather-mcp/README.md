@@ -1,183 +1,313 @@
-# Weather MCP Server - Docker Deployment
+# Weather MCP Server with Google OAuth Authentication
 
-This guide shows how to containerize and deploy the Weather MCP server using Docker.
+This is an HTTP-based MCP (Model Context Protocol) server that provides weather information using the National Weather Service API, secured with Google OAuth authentication.
 
-## Files
+## Features
 
-- `Dockerfile` - Container definition
-- `docker-compose.yml` - Easy deployment with Docker Compose
-- `.dockerignore` - Optimizes build by excluding unnecessary files
-- `mcp_client.py` - Python client for testing
-- `requirements.txt` - Python dependencies
-- `weather.py` - Main server file
-- `README.md` - This documentation
-- `pyproject.toml` - Python project configuration
+- 🌤️ Get weather alerts for any US state
+- 🌍 Get detailed weather forecasts by coordinates
+- 🔐 **Google OAuth Authentication** - Secure access with Google tokens
+- 🚀 HTTP transport with FastMCP 2.0
+- 🐳 Docker support
+- 📝 Request logging with user context
 
-## Quick Start
+## Security
 
-### Option 1: Using Docker Compose (Recommended)
+This server uses Google OAuth JWT tokens for authentication. All requests must include a valid `Authorization: Bearer <token>` header with a Google-issued JWT token.
+
+### Authentication Flow
+
+1. **Token Validation**: Server validates JWT tokens using Google's public keys
+2. **User Context**: Each request logs the authenticated user's information
+3. **Secure Access**: Only authenticated users can access weather tools
+
+## Installation
+
+### Prerequisites
+
+- Python 3.12+
+- Google OAuth 2.0 setup (optional for audience validation)
+
+### 1. Install Dependencies
 
 ```bash
-# Build and run the container
-docker compose up --build
-
-# Run in background
-docker compose up -d --build
-
-# Stop the container
-docker compose down
+pip install -r requirements.txt
 ```
 
-### Option 2: Using Docker Commands
+### 2. Environment Configuration (Optional)
+
+Copy the example environment file and configure if needed:
 
 ```bash
-# Build the image
-docker build -t weather-mcp .
-
-# Run the container
-docker run -p 8123:8123 weather-mcp
-
-# Run in background
-docker run -d -p 8123:8123 --name weather-mcp-server weather-mcp
+cp .env.example .env
 ```
 
-## Access the Server
+Edit `.env` to set your Google OAuth Client ID (optional for stricter validation):
 
-Once running, the MCP server will be available at:
-
-- **HTTP Streaming**: `http://localhost:8123/mcp`
-- **SSE**: `http://localhost:8123/sse` (if FastMCP supports both)
-
-## Test the Deployment
-
-### Using the MCP Client
-
-```bash
-# Test with the Python client
-python mcp_client.py http://localhost:8123/mcp
-
-# Test a specific tool
-python mcp_client.py http://localhost:8123/mcp --test
+```env
+GOOGLE_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
 ```
 
-### Using curl
+### 3. Run the Server
 
 ```bash
-# Initialize connection
+python weather.py
+```
+
+The server will start on `http://localhost:8123` by default with Google OAuth authentication enabled.
+
+## Authentication Setup
+
+### Google OAuth Configuration
+
+The server is configured to accept JWT tokens issued by Google:
+
+- **JWKS URI**: `https://www.googleapis.com/oauth2/v3/certs`
+- **Issuer**: `https://accounts.google.com`
+- **Algorithm**: `RS256`
+- **Audience**: Optional (set via `GOOGLE_OAUTH_CLIENT_ID` env var)
+
+### Getting Google OAuth Tokens
+
+To test the server, you need a valid Google OAuth token. You can:
+
+1. **Use Google OAuth Playground**: https://developers.google.com/oauthplayground/
+2. **Create a web app**: Set up Google OAuth in your application
+3. **Use the FastMCP universal OAuth client** (when available)
+
+### Example Token Request
+
+```bash
+# Example request with Bearer token
 curl -X POST http://localhost:8123/mcp \
   -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer YOUR_GOOGLE_JWT_TOKEN" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
-    "method": "initialize",
+    "method": "tools/call",
     "params": {
-      "protocolVersion": "2024-11-05",
-      "capabilities": {},
-      "clientInfo": {
-        "name": "test-client",
-        "version": "1.0.0"
-      }
+      "name": "get_alerts",
+      "arguments": {"state": "CA"}
     }
   }'
 ```
 
-## Configuration
-
-### Environment Variables
-
-You can customize the server using environment variables:
-
-```bash
-# Custom port
-docker run -p 8080:8080 -e PORT=8080 weather-mcp
-
-# Or in docker-compose.yml:
-environment:
-  - PORT=8080
-```
-
-### Command Line Arguments
-
-The container supports these arguments:
-
-- `--port`: Port to listen on (default: 8123)
-- `--host`: Host to bind to (default: 0.0.0.0 for Docker)
-
-```bash
-# Custom arguments
-docker run -p 9000:9000 weather-mcp python weather.py --port 9000
-```
-
-## Health Check
-
-The container includes a health check that verifies the server is responding. View health status:
-
-```bash
-# Check container health
-docker ps
-
-# View health check logs
-docker inspect weather-mcp-server
-```
-
 ## Available Tools
 
-The containerized server exposes these MCP tools:
+All tools require Google OAuth authentication:
 
-1. **get_alerts** - Get weather alerts for US states
-   - Parameter: `state` (2-letter US state code)
+### 1. get_alerts
 
-2. **get_forecast** - Get weather forecast for coordinates
-   - Parameters: `latitude`, `longitude`
+Get weather alerts for any US state.
 
-## Production Deployment
+**Parameters:**
+- `state` (string): Two-letter US state code (e.g., "CA", "NY")
 
-### With Reverse Proxy
-
-For production, consider putting the container behind a reverse proxy:
-
-```nginx
-# Nginx configuration
-server {
-    listen 80;
-    server_name your-domain.com;
-    
-    location /mcp {
-        proxy_pass http://localhost:8123/mcp;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
+**Example:**
+```json
+{
+  "name": "get_alerts",
+  "arguments": {"state": "CA"}
 }
 ```
 
-### With SSL
+### 2. get_forecast
 
-Use Let's Encrypt or similar for HTTPS in production.
+Get detailed weather forecast for specific coordinates.
+
+**Parameters:**
+- `latitude` (float): Latitude coordinate
+- `longitude` (float): Longitude coordinate
+
+**Example:**
+```json
+{
+  "name": "get_forecast",
+  "arguments": {"latitude": 37.7749, "longitude": -122.4194}
+}
+```
+
+## Command Line Options
+
+```bash
+python weather.py --help
+```
+
+Available options:
+- `--port`: Port to listen on (default: 8123)
+- `--host`: Host to bind to (default: 0.0.0.0)
+
+## Docker Deployment
+
+### Build and Run
+
+```bash
+# Build the image
+docker build -t weather-mcp-auth .
+
+# Run the container
+docker run -p 8123:8123 weather-mcp-auth
+
+# Run with environment variables
+docker run -p 8123:8123 -e GOOGLE_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com weather-mcp-auth
+```
+
+### Docker Compose
+
+```yaml
+version: '3.8'
+services:
+  weather-mcp:
+    build: .
+    ports:
+      - "8123:8123"
+    environment:
+      - GOOGLE_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
+```
+
+## Testing the Authentication
+
+### 1. Without Token (Should Fail)
+
+```bash
+curl -X POST http://localhost:8123/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "get_alerts",
+      "arguments": {"state": "CA"}
+    }
+  }'
+```
+
+Expected: `401 Unauthorized`
+
+### 2. With Valid Token (Should Work)
+
+```bash
+curl -X POST http://localhost:8123/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_VALID_GOOGLE_JWT" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "get_alerts",
+      "arguments": {"state": "CA"}
+    }
+  }'
+```
+
+Expected: Weather alerts data with user logging
+
+## Universal OAuth Client Integration
+
+This server is designed to work with a universal OAuth client that can:
+
+1. **Configure OAuth Provider**: Point to Google OAuth endpoints
+2. **Handle Token Flow**: Manage Google OAuth 2.0 flow
+3. **Store Tokens**: Maintain JWT tokens for MCP requests  
+4. **Automatic Refresh**: Handle token renewal
+
+### Example Client Configuration
+
+```javascript
+const mcpServer = {
+  name: "Weather Service",
+  url: "http://localhost:8123/mcp",
+  oauth: {
+    provider: "google",
+    authUrl: "https://accounts.google.com/oauth/authorize",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    scopes: ["openid", "email"],
+    clientId: "your-client-id.apps.googleusercontent.com"
+  }
+}
+```
+
+## Logging and Monitoring
+
+The server logs all authenticated requests with user context:
+
+```
+[INFO] Fetching weather alerts for CA - User: user@example.com
+[INFO] Fetching weather forecast for coordinates (37.7749, -122.4194) - User: user@example.com
+```
+
+## Security Considerations
+
+- ✅ **No Shared Secrets**: Server only needs Google's public keys
+- ✅ **JWT Verification**: Cryptographic signature validation
+- ✅ **User Context**: Every request tracks the authenticated user
+- ✅ **Token Expiration**: Respects JWT expiration times
+- ✅ **Issuer Validation**: Only accepts tokens from Google
+- ⚠️ **HTTPS Recommended**: Use HTTPS in production
+- ⚠️ **Token Storage**: Clients should securely store tokens
+
+## Development vs Production
+
+### Development
+- Audience validation is optional
+- Can use Google OAuth Playground tokens
+- HTTP is acceptable for localhost
+
+### Production
+- Set `GOOGLE_OAUTH_CLIENT_ID` for audience validation
+- Use HTTPS with proper certificates
+- Implement proper token refresh in clients
+- Consider rate limiting and monitoring
 
 ## Troubleshooting
 
-### Container won't start
+### Common Issues
 
-```bash
-# Check logs
-docker logs weather-mcp-server
+1. **401 Unauthorized**
+   - Check if token is included in Authorization header
+   - Verify token format: `Bearer <jwt_token>`
+   - Ensure token is not expired
 
-# Run interactively
-docker run -it -p 8123:8123 weather-mcp /bin/bash
+2. **Invalid Token**
+   - Token must be issued by Google
+   - Check token signature and claims
+   - Verify token hasn't expired
+
+3. **Network Issues**
+   - Server needs internet access for Google JWKS
+   - Check firewall settings
+   - Verify Google's certificate endpoints are reachable
+
+### Debug Mode
+
+Add logging to see token validation details:
+
+```python
+import logging
+logging.basicConfig(level=logging.DEBUG)
 ```
 
-### Network issues
+## Architecture
 
-- Ensure port 8123 is available
-- Check firewall settings
-- Verify the container is binding to 0.0.0.0, not localhost
+This implementation demonstrates:
 
-### Health check failing
+- **FastMCP 2.0 Authentication**: Built-in JWT verification
+- **Google OAuth Integration**: Standard OIDC provider integration  
+- **Secure MCP Pattern**: No shared secrets, public key validation
+- **Production Ready**: Proper error handling and logging
+- **Universal Client Ready**: Designed for OAuth client integration
 
-The health check may fail if the FastMCP server doesn't have a `/health` endpoint. You can disable it in docker-compose.yml:
+## Next Steps
 
-```yaml
-# Remove or comment out the healthcheck section
-# healthcheck:
-#   test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8123/health', timeout=5)"]
+1. **Create Universal OAuth Client**: Web app for multi-provider OAuth
+2. **Add More Providers**: Support Microsoft, Auth0, custom OIDC
+3. **Scope-Based Permissions**: Different access levels per user
+4. **Rate Limiting**: Per-user request limits
+5. **Audit Logging**: Enhanced security logging
+
+---
+
+**Made with ☕️ using FastMCP 2.0 and Google OAuth**
